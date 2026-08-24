@@ -1,0 +1,535 @@
+<title>Zhuyin Trainer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@400;600;800&family=Chivo+Mono:wght@400;600&family=LXGW+WenKai+TC:wght@400;700&display=swap">
+<style>
+  :root {
+    --bg: #F8F5EC;
+    --grid-line: rgba(51, 121, 91, 0.07);
+    --surface: #FFFDF7;
+    --ink: #33322C;
+    --muted: #8A8575;
+    --line: #DCD5C3;
+    --accent: #33795B;
+    --accent-ink: #FFFDF7;
+    --accent-soft: rgba(51, 121, 91, 0.12);
+    --red: #C2452F;
+    --red-soft: rgba(194, 69, 47, 0.12);
+    --key-shadow: rgba(70, 60, 40, 0.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #171F1B;
+      --grid-line: rgba(230, 225, 211, 0.045);
+      --surface: #212B25;
+      --ink: #E6E1D3;
+      --muted: #8FA097;
+      --line: #37453D;
+      --accent: #6FBF97;
+      --accent-ink: #14211B;
+      --accent-soft: rgba(111, 191, 151, 0.16);
+      --red: #E0705A;
+      --red-soft: rgba(224, 112, 90, 0.18);
+      --key-shadow: rgba(0, 0, 0, 0.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #171F1B;
+    --grid-line: rgba(230, 225, 211, 0.045);
+    --surface: #212B25;
+    --ink: #E6E1D3;
+    --muted: #8FA097;
+    --line: #37453D;
+    --accent: #6FBF97;
+    --accent-ink: #14211B;
+    --accent-soft: rgba(111, 191, 151, 0.16);
+    --red: #E0705A;
+    --red-soft: rgba(224, 112, 90, 0.18);
+    --key-shadow: rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 28px 28px;
+    color: var(--ink);
+    font-family: "Chivo", "LXGW WenKai TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
+    line-height: 1.5;
+  }
+  .zh { font-family: "LXGW WenKai TC", "Noto Sans CJK TC", "Microsoft JhengHei", serif; }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 20px 48px; }
+
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+  h1 .zh { font-weight: 700; }
+  .subtitle { color: var(--muted); font-size: 0.85rem; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin-bottom: 18px;
+  }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--muted);
+    font: 600 0.85rem "Chivo", sans-serif; padding: 7px 14px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg button:focus-visible, .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .toggle {
+    appearance: none; display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+    color: var(--muted); font: 600 0.85rem "Chivo", sans-serif; padding: 7px 12px; cursor: pointer;
+  }
+  .toggle .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: none; }
+  .toggle[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+  .toggle[aria-pressed="true"] .dot { background: var(--accent); }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 26px 24px; margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  /* ---- prompt area ---- */
+  .prompt { min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+  .word-row { display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; }
+  .syl { display: flex; align-items: center; gap: 4px; }
+  .syl .han { font-size: 3.4rem; line-height: 1.15; }
+  .syl.done .han { color: var(--accent); }
+  .zy-col { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 1.2em; }
+  .zy-col span {
+    font-size: 1.05rem; line-height: 1.25; color: var(--muted);
+    border-bottom: 2px solid transparent;
+  }
+  .zy-col span.done { color: var(--accent); }
+  .zy-col span.current { color: var(--ink); border-bottom-color: var(--red); }
+  .zy-col span.tone { color: var(--red); font-weight: 700; }
+  .zy-col span.tone.off { opacity: 0.35; }
+  .zy-col span.tone.done { color: var(--accent); }
+
+  .glyph { font-size: 4.6rem; line-height: 1.1; }
+  .glyph-pinyin { color: var(--muted); font-size: 1rem; }
+  .glyph-pinyin b { color: var(--ink); font-family: "Chivo Mono", monospace; }
+
+  .prompt-note { color: var(--muted); font-size: 0.8rem; text-align: center; }
+  .prompt-note kbd {
+    font-family: "Chivo Mono", monospace; font-size: 0.78rem;
+    border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; background: var(--bg);
+  }
+
+  .flash-ok { animation: flashok 0.35s; }
+  .flash-bad { animation: flashbad 0.35s; }
+  @keyframes flashok { 0% { box-shadow: inset 0 0 0 3px var(--accent); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+  @keyframes flashbad { 0% { box-shadow: inset 0 0 0 3px var(--red); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+
+  /* ---- keyboard ---- */
+  .kb-scroll { overflow-x: auto; padding-bottom: 4px; }
+  .kb { display: flex; flex-direction: column; gap: 6px; min-width: 640px; }
+  .kb-row { display: flex; gap: 6px; }
+  .kb-row.r2 { padding-left: 28px; }
+  .kb-row.r3 { padding-left: 42px; }
+  .kb-row.r4 { padding-left: 70px; }
+  .key {
+    position: relative; width: 52px; height: 52px; flex: none;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 7px;
+    box-shadow: 0 2px 0 var(--key-shadow);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .key .latin {
+    position: absolute; top: 3px; left: 6px;
+    font: 600 0.62rem "Chivo Mono", monospace; color: var(--muted); text-transform: uppercase;
+  }
+  .key .legend { font-size: 1.3rem; line-height: 1; padding-top: 6px; }
+  .key .legend.tone-mark { color: var(--red); font-weight: 700; }
+  .key.space { width: 300px; }
+  .key.space .legend { font-size: 0.78rem; color: var(--muted); font-family: "Chivo", sans-serif; }
+  .key.pressed { transform: translateY(2px); box-shadow: 0 0 0 var(--key-shadow); }
+  .key.ok { background: var(--accent-soft); border-color: var(--accent); }
+  .key.bad { background: var(--red-soft); border-color: var(--red); }
+  .key.hint { border-color: var(--red); animation: hintpulse 0.9s ease-in-out infinite; }
+  @keyframes hintpulse { 50% { background: var(--red-soft); } }
+  .kb.nolegend .legend:not(.tone-mark) { visibility: hidden; }
+  .kb.nolegend .key.hint .legend, .kb.nolegend .key.ok .legend { visibility: visible; }
+  @media (prefers-reduced-motion: reduce) {
+    .flash-ok, .flash-bad { animation: none; }
+    .key.hint { animation: none; background: var(--red-soft); }
+  }
+
+  /* ---- stats ---- */
+  .stats { display: flex; flex-wrap: wrap; gap: 24px; align-items: center; }
+  .stat { display: flex; flex-direction: column; }
+  .stat .num { font: 800 1.5rem "Chivo", sans-serif; font-variant-numeric: tabular-nums; }
+  .stat .lbl { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .weak { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .weak .chip {
+    border: 1px solid var(--red); color: var(--red); background: var(--red-soft);
+    border-radius: 6px; padding: 2px 8px; font-size: 0.95rem;
+  }
+  .weak .chip small { font-family: "Chivo Mono", monospace; font-size: 0.68rem; margin-left: 4px; }
+  .stats .reset {
+    margin-left: auto; appearance: none; background: none; border: none;
+    color: var(--muted); font: 600 0.75rem "Chivo", sans-serif; cursor: pointer; text-decoration: underline;
+  }
+
+  footer { margin-top: 14px; color: var(--muted); font-size: 0.78rem; max-width: 62ch; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span class="zh">ㄓㄨˋㄧㄣ</span> Zhuyin Trainer</h1>
+    <span class="subtitle">Dachen layout drill — the same layout your Chewing IME uses</span>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Practice mode">
+      <button id="mode-sym" aria-pressed="true">Symbols ㄅㄆㄇ</button>
+      <button id="mode-word" aria-pressed="false">Words 詞語</button>
+    </div>
+    <button class="toggle" id="tog-tones" aria-pressed="false"><span class="dot"></span>Require tones</button>
+    <button class="toggle" id="tog-legend" aria-pressed="true"><span class="dot"></span>Show key legends</button>
+  </div>
+
+  <div class="card prompt" id="prompt-card">
+    <div id="prompt-body"></div>
+    <div class="prompt-note" id="prompt-note"></div>
+  </div>
+
+  <div class="card">
+    <div class="kb-scroll"><div class="kb" id="kb"></div></div>
+  </div>
+
+  <div class="card stats">
+    <div class="stat"><span class="num" id="st-acc">–</span><span class="lbl">Accuracy</span></div>
+    <div class="stat"><span class="num" id="st-streak">0</span><span class="lbl">Streak</span></div>
+    <div class="stat"><span class="num" id="st-done">0</span><span class="lbl">Completed</span></div>
+    <div class="weak" id="st-weak"></div>
+    <button class="reset" id="st-reset">reset stats</button>
+  </div>
+
+  <footer>
+    Type on your physical keyboard. In toneless mode this mirrors Chewing's fuzzy mode; turn on
+    <strong>Require tones</strong> to drill the tone keys too (space&nbsp;=&nbsp;1st tone, 6&nbsp;=&nbsp;ˊ, 3&nbsp;=&nbsp;ˇ, 4&nbsp;=&nbsp;ˋ, 7&nbsp;=&nbsp;˙).
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---- Dachen (大千 / standard) layout data ----
+  const ROWS = [
+    [['1','ㄅ','b'],['2','ㄉ','d'],['3','ˇ',null],['4','ˋ',null],['5','ㄓ','zh'],['6','ˊ',null],['7','˙',null],['8','ㄚ','a'],['9','ㄞ','ai'],['0','ㄢ','an'],['-','ㄦ','er']],
+    [['q','ㄆ','p'],['w','ㄊ','t'],['e','ㄍ','g'],['r','ㄐ','j'],['t','ㄔ','ch'],['y','ㄗ','z'],['u','ㄧ','i / y'],['i','ㄛ','o'],['o','ㄟ','ei'],['p','ㄣ','en']],
+    [['a','ㄇ','m'],['s','ㄋ','n'],['d','ㄎ','k'],['f','ㄑ','q'],['g','ㄕ','sh'],['h','ㄘ','c'],['j','ㄨ','u / w'],['k','ㄜ','e'],['l','ㄠ','ao'],[';','ㄤ','ang']],
+    [['z','ㄈ','f'],['x','ㄌ','l'],['c','ㄏ','h'],['v','ㄒ','x'],['b','ㄖ','r'],['n','ㄙ','s'],['m','ㄩ','ü / yu'],[',','ㄝ','ê'],['.','ㄡ','ou'],['/','ㄥ','eng']],
+  ];
+  const TONE_KEY = { 1: ' ', 2: '6', 3: '3', 4: '4', 5: '7' };
+  const TONE_MARK = { 1: 'ˉ', 2: 'ˊ', 3: 'ˇ', 4: 'ˋ', 5: '˙' };
+
+  const SYM_TO_KEY = {};
+  const SYMBOLS = []; // drillable symbols (not tones)
+  for (const row of ROWS) for (const [k, z, p] of row) {
+    SYM_TO_KEY[z] = k;
+    if (p) SYMBOLS.push({ key: k, sym: z, pinyin: p });
+  }
+
+  // ---- word list: [characters, [zhuyin, tone] per syllable] ----
+  const WORDS = [
+    ['你好', [['ㄋㄧ',3],['ㄏㄠ',3]]],
+    ['謝謝', [['ㄒㄧㄝ',4],['ㄒㄧㄝ',5]]],
+    ['台灣', [['ㄊㄞ',2],['ㄨㄢ',1]]],
+    ['中文', [['ㄓㄨㄥ',1],['ㄨㄣ',2]]],
+    ['老師', [['ㄌㄠ',3],['ㄕ',1]]],
+    ['學生', [['ㄒㄩㄝ',2],['ㄕㄥ',1]]],
+    ['朋友', [['ㄆㄥ',2],['ㄧㄡ',3]]],
+    ['吃飯', [['ㄔ',1],['ㄈㄢ',4]]],
+    ['喝水', [['ㄏㄜ',1],['ㄕㄨㄟ',3]]],
+    ['咖啡', [['ㄎㄚ',1],['ㄈㄟ',1]]],
+    ['捷運', [['ㄐㄧㄝ',2],['ㄩㄣ',4]]],
+    ['夜市', [['ㄧㄝ',4],['ㄕ',4]]],
+    ['珍珠奶茶', [['ㄓㄣ',1],['ㄓㄨ',1],['ㄋㄞ',3],['ㄔㄚ',2]]],
+    ['早安', [['ㄗㄠ',3],['ㄢ',1]]],
+    ['晚安', [['ㄨㄢ',3],['ㄢ',1]]],
+    ['不好意思', [['ㄅㄨ',4],['ㄏㄠ',3],['ㄧ',4],['ㄙ',5]]],
+    ['沒關係', [['ㄇㄟ',2],['ㄍㄨㄢ',1],['ㄒㄧ',4]]],
+    ['對不起', [['ㄉㄨㄟ',4],['ㄅㄨ',4],['ㄑㄧ',3]]],
+    ['請問', [['ㄑㄧㄥ',3],['ㄨㄣ',4]]],
+    ['多少錢', [['ㄉㄨㄛ',1],['ㄕㄠ',3],['ㄑㄧㄢ',2]]],
+    ['好吃', [['ㄏㄠ',3],['ㄔ',1]]],
+    ['漂亮', [['ㄆㄧㄠ',4],['ㄌㄧㄤ',4]]],
+    ['今天', [['ㄐㄧㄣ',1],['ㄊㄧㄢ',1]]],
+    ['明天', [['ㄇㄧㄥ',2],['ㄊㄧㄢ',1]]],
+    ['現在', [['ㄒㄧㄢ',4],['ㄗㄞ',4]]],
+    ['時間', [['ㄕ',2],['ㄐㄧㄢ',1]]],
+    ['工作', [['ㄍㄨㄥ',1],['ㄗㄨㄛ',4]]],
+    ['電腦', [['ㄉㄧㄢ',4],['ㄋㄠ',3]]],
+    ['手機', [['ㄕㄡ',3],['ㄐㄧ',1]]],
+    ['鍵盤', [['ㄐㄧㄢ',4],['ㄆㄢ',2]]],
+    ['注音', [['ㄓㄨ',4],['ㄧㄣ',1]]],
+    ['國語', [['ㄍㄨㄛ',2],['ㄩ',3]]],
+    ['牛肉麵', [['ㄋㄧㄡ',2],['ㄖㄡ',4],['ㄇㄧㄢ',4]]],
+    ['小籠包', [['ㄒㄧㄠ',3],['ㄌㄨㄥ',2],['ㄅㄠ',1]]],
+    ['機車', [['ㄐㄧ',1],['ㄔㄜ',1]]],
+    ['公車', [['ㄍㄨㄥ',1],['ㄔㄜ',1]]],
+    ['火車', [['ㄏㄨㄛ',3],['ㄔㄜ',1]]],
+    ['高鐵', [['ㄍㄠ',1],['ㄊㄧㄝ',3]]],
+    ['沒有', [['ㄇㄟ',2],['ㄧㄡ',3]]],
+    ['可以', [['ㄎㄜ',3],['ㄧ',3]]],
+    ['加油', [['ㄐㄧㄚ',1],['ㄧㄡ',2]]],
+  ];
+
+  // ---- persistence (best-effort) ----
+  const store = {
+    load(key, fallback) {
+      try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+      catch { return fallback; }
+    },
+    save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+  };
+
+  const settings = Object.assign({ mode: 'sym', tones: false, legends: true }, store.load('zt-settings', {}));
+  let symStats = store.load('zt-symstats', {}); // sym -> {hit, miss}
+
+  const session = { hits: 0, misses: 0, streak: 0, done: 0 };
+
+  // ---- build keyboard ----
+  const kbEl = document.getElementById('kb');
+  const keyEls = {};
+  ROWS.forEach((row, i) => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'kb-row r' + (i + 1);
+    for (const [k, z, p] of row) {
+      const el = document.createElement('div');
+      el.className = 'key';
+      const legendCls = p ? 'legend zh' : 'legend zh tone-mark';
+      el.innerHTML = `<span class="latin">${k === ';' ? ';' : k}</span><span class="${legendCls}">${z}</span>`;
+      rowEl.appendChild(el);
+      keyEls[k] = el;
+    }
+    kbEl.appendChild(rowEl);
+  });
+  const spaceRow = document.createElement('div');
+  spaceRow.className = 'kb-row';
+  spaceRow.style.justifyContent = 'center';
+  const spaceEl = document.createElement('div');
+  spaceEl.className = 'key space';
+  spaceEl.innerHTML = `<span class="latin">space</span><span class="legend">1st tone ˉ / confirm</span>`;
+  spaceRow.appendChild(spaceEl);
+  kbEl.appendChild(spaceRow);
+  keyEls[' '] = spaceEl;
+
+  // ---- drill state ----
+  let queue = [];      // [{key, el}] expected presses; el = span to mark done
+  let hintAfter = 2;   // errors before hint appears
+  let errorsThisStep = 0;
+  let currentSym = null; // symbol being tested (for stats)
+  let lastGlyph = null;
+
+  const promptBody = document.getElementById('prompt-body');
+  const promptNote = document.getElementById('prompt-note');
+  const promptCard = document.getElementById('prompt-card');
+
+  function weightedSymbol() {
+    const pool = [];
+    for (const s of SYMBOLS) {
+      const st = symStats[s.sym] || { hit: 0, miss: 0 };
+      const total = st.hit + st.miss;
+      const acc = total ? st.hit / total : 1;
+      const w = s.sym === lastGlyph ? 0 : (acc < 0.8 && total >= 3 ? 3 : 1);
+      for (let i = 0; i < w; i++) pool.push(s);
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function nextSymbolPrompt() {
+    const s = weightedSymbol();
+    lastGlyph = s.sym;
+    currentSym = s.sym;
+    errorsThisStep = 0;
+    promptBody.innerHTML =
+      `<div class="glyph zh">${s.sym}</div>
+       <div class="glyph-pinyin">pinyin <b>${s.pinyin}</b></div>`;
+    promptNote.textContent = 'Press the key for this symbol';
+    queue = [{ key: s.key, el: null, sym: s.sym }];
+  }
+
+  function nextWordPrompt() {
+    const [chars, syls] = WORDS[Math.floor(Math.random() * WORDS.length)];
+    if (chars === lastGlyph && WORDS.length > 1) return nextWordPrompt();
+    lastGlyph = chars;
+    errorsThisStep = 0;
+    queue = [];
+    const row = document.createElement('div');
+    row.className = 'word-row';
+    syls.forEach((syl, i) => {
+      const [zy, tone] = syl;
+      const sylEl = document.createElement('div');
+      sylEl.className = 'syl';
+      const col = document.createElement('div');
+      col.className = 'zy-col zh';
+      const spans = [];
+      // neutral tone is written before the syllable
+      if (tone === 5) {
+        const t = document.createElement('span');
+        t.className = 'tone' + (settings.tones ? '' : ' off');
+        t.textContent = TONE_MARK[5];
+        col.appendChild(t);
+        spans.tone = t;
+      }
+      for (const ch of zy) {
+        const sp = document.createElement('span');
+        sp.textContent = ch;
+        col.appendChild(sp);
+        queue.push({ key: SYM_TO_KEY[ch], el: sp, sym: ch, sylEl });
+      }
+      if (tone !== 5) {
+        const t = document.createElement('span');
+        t.className = 'tone' + (settings.tones ? '' : ' off');
+        t.textContent = TONE_MARK[tone];
+        col.appendChild(t);
+        spans.tone = t;
+      }
+      if (settings.tones) {
+        queue.push({ key: TONE_KEY[tone], el: spans.tone, sym: TONE_MARK[tone], sylEl, isTone: true });
+      }
+      sylEl.innerHTML = `<div class="han zh">${[...chars][i]}</div>`;
+      sylEl.appendChild(col);
+      row.appendChild(sylEl);
+    });
+    promptBody.innerHTML = '';
+    promptBody.appendChild(row);
+    promptNote.innerHTML = settings.tones
+      ? 'Type each zhuyin symbol, then its tone key (<kbd>space</kbd> for 1st tone)'
+      : 'Type the zhuyin symbols — tones shown but not required, just like fuzzy mode';
+    markCurrent();
+  }
+
+  function markCurrent() {
+    if (queue.length && queue[0].el) queue[0].el.classList.add('current');
+    currentSym = queue.length ? queue[0].sym : null;
+    errorsThisStep = 0;
+    clearHint();
+  }
+
+  function clearHint() {
+    for (const k in keyEls) keyEls[k].classList.remove('hint');
+  }
+
+  function nextPrompt() {
+    clearHint();
+    if (settings.mode === 'sym') nextSymbolPrompt();
+    else nextWordPrompt();
+  }
+
+  // ---- stats rendering ----
+  const stAcc = document.getElementById('st-acc');
+  const stStreak = document.getElementById('st-streak');
+  const stDone = document.getElementById('st-done');
+  const stWeak = document.getElementById('st-weak');
+
+  function renderStats() {
+    const total = session.hits + session.misses;
+    stAcc.textContent = total ? Math.round(100 * session.hits / total) + '%' : '–';
+    stStreak.textContent = session.streak;
+    stDone.textContent = session.done;
+    const weak = Object.entries(symStats)
+      .map(([sym, s]) => ({ sym, total: s.hit + s.miss, acc: s.hit / (s.hit + s.miss) }))
+      .filter(w => w.total >= 4 && w.acc < 0.85)
+      .sort((a, b) => a.acc - b.acc)
+      .slice(0, 5);
+    stWeak.innerHTML = weak.length
+      ? weak.map(w => `<span class="chip zh">${w.sym}<small>${Math.round(w.acc * 100)}%</small></span>`).join('')
+      : '';
+  }
+
+  function recordResult(sym, ok) {
+    if (!sym) return;
+    const s = symStats[sym] || (symStats[sym] = { hit: 0, miss: 0 });
+    ok ? s.hit++ : s.miss++;
+    store.save('zt-symstats', symStats);
+  }
+
+  // ---- input handling ----
+  function flashKey(k, cls) {
+    const el = keyEls[k];
+    if (!el) return;
+    el.classList.add('pressed', cls);
+    setTimeout(() => el.classList.remove('pressed', cls), 220);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    const k = e.key.toLowerCase();
+    if (!(k in keyEls)) return;
+    e.preventDefault();
+    if (!queue.length) return;
+
+    const step = queue[0];
+    if (k === step.key) {
+      flashKey(k, 'ok');
+      session.hits++;
+      session.streak++;
+      recordResult(step.sym, errorsThisStep === 0);
+      if (step.el) { step.el.classList.remove('current'); step.el.classList.add('done'); }
+      queue.shift();
+      if (step.sylEl && !queue.some(q => q.sylEl === step.sylEl)) step.sylEl.classList.add('done');
+      if (!queue.length) {
+        session.done++;
+        promptCard.classList.remove('flash-ok');
+        void promptCard.offsetWidth;
+        promptCard.classList.add('flash-ok');
+        renderStats();
+        setTimeout(nextPrompt, 450);
+      } else {
+        markCurrent();
+        renderStats();
+      }
+    } else {
+      flashKey(k, 'bad');
+      session.misses++;
+      session.streak = 0;
+      errorsThisStep++;
+      promptCard.classList.remove('flash-bad');
+      void promptCard.offsetWidth;
+      promptCard.classList.add('flash-bad');
+      if (errorsThisStep >= hintAfter && keyEls[step.key]) keyEls[step.key].classList.add('hint');
+      renderStats();
+    }
+  });
+
+  // ---- controls ----
+  const modeSym = document.getElementById('mode-sym');
+  const modeWord = document.getElementById('mode-word');
+  const togTones = document.getElementById('tog-tones');
+  const togLegend = document.getElementById('tog-legend');
+
+  function applySettings() {
+    modeSym.setAttribute('aria-pressed', settings.mode === 'sym');
+    modeWord.setAttribute('aria-pressed', settings.mode === 'word');
+    togTones.setAttribute('aria-pressed', settings.tones);
+    togLegend.setAttribute('aria-pressed', settings.legends);
+    kbEl.classList.toggle('nolegend', !settings.legends);
+    store.save('zt-settings', settings);
+  }
+  modeSym.addEventListener('click', () => { settings.mode = 'sym'; applySettings(); nextPrompt(); });
+  modeWord.addEventListener('click', () => { settings.mode = 'word'; applySettings(); nextPrompt(); });
+  togTones.addEventListener('click', () => { settings.tones = !settings.tones; applySettings(); if (settings.mode === 'word') nextPrompt(); });
+  togLegend.addEventListener('click', () => { settings.legends = !settings.legends; applySettings(); });
+
+  document.getElementById('st-reset').addEventListener('click', () => {
+    symStats = {};
+    store.save('zt-symstats', symStats);
+    session.hits = session.misses = session.streak = session.done = 0;
+    renderStats();
+  });
+
+  applySettings();
+  renderStats();
+  nextPrompt();
+})();
+</script>
