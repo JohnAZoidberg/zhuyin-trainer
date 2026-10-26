@@ -15,6 +15,7 @@
     --red: #C2452F;
     --red-soft: rgba(194, 69, 47, 0.12);
     --key-shadow: rgba(70, 60, 40, 0.18);
+    --home-key: #EEE6D1;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -30,6 +31,7 @@
       --red: #E0705A;
       --red-soft: rgba(224, 112, 90, 0.18);
       --key-shadow: rgba(0, 0, 0, 0.45);
+      --home-key: #2C3A32;
     }
   }
   :root[data-theme="dark"] {
@@ -45,6 +47,7 @@
     --red: #E0705A;
     --red-soft: rgba(224, 112, 90, 0.18);
     --key-shadow: rgba(0, 0, 0, 0.45);
+    --home-key: #2C3A32;
   }
 
   * { box-sizing: border-box; }
@@ -167,6 +170,12 @@
   .key .legend { font-size: 1.3rem; line-height: 1; padding-top: 6px; }
   .key .legend.tone-mark { color: var(--red); font-weight: 700; }
   .key.space { width: 300px; }
+  .key.home { background: var(--home-key); }
+  /* F and J carry a bump on real keyboards */
+  .key.bump::after {
+    content: ""; position: absolute; bottom: 3px; left: 50%; width: 12px; height: 2px;
+    margin-left: -6px; border-radius: 1px; background: var(--muted);
+  }
   .key.space .legend { font-size: 0.78rem; color: var(--muted); font-family: "Chivo", sans-serif; }
   .key.pressed { transform: translateY(2px); box-shadow: 0 0 0 var(--key-shadow); }
   .key.ok { background: var(--accent-soft); border-color: var(--accent); }
@@ -373,12 +382,13 @@
   // ---- build keyboard ----
   const kbEl = document.getElementById('kb');
   const keyEls = {};
+  const HOME_KEYS = 'asdfjkl;'; // finger resting positions
   ROWS.forEach((row, i) => {
     const rowEl = document.createElement('div');
     rowEl.className = 'kb-row r' + (i + 1);
     for (const [k, z, p] of row) {
       const el = document.createElement('div');
-      el.className = 'key';
+      el.className = 'key' + (HOME_KEYS.includes(k) ? ' home' : '') + (k === 'f' || k === 'j' ? ' bump' : '');
       const legendCls = p ? 'legend zh' : 'legend zh tone-mark';
       el.innerHTML = `<span class="latin">${k === ';' ? ';' : k}</span><span class="${legendCls}">${z}</span>`;
       rowEl.appendChild(el);
