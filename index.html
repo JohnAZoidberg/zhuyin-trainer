@@ -88,6 +88,12 @@
   .toggle .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); flex: none; }
   .toggle[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
   .toggle[aria-pressed="true"] .dot { background: var(--accent); }
+  .picker {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+    color: var(--ink); font: 600 0.85rem "Chivo", sans-serif; padding: 7px 10px; cursor: pointer;
+  }
+  .picker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .controls [hidden] { display: none; }
 
   .card {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
@@ -111,13 +117,27 @@
   .zy-col span.tone { color: var(--red); font-weight: 700; }
   .zy-col span.tone.off { opacity: 0.35; }
   .zy-col span.tone.done { color: var(--accent); }
+  .zy-col span.done.err { color: var(--red); }
+
+  /* line modes: several syllables / drill groups per prompt */
+  .word-row.line { gap: 12px 22px; max-width: 720px; }
+  .word-row.line .han { font-size: 2.3rem; }
+  .drill { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 30px; max-width: 700px; }
+  .drill .grp { display: flex; gap: 3px; }
+  .drill .grp span {
+    font-size: 2.2rem; line-height: 1.3; color: var(--muted);
+    border-bottom: 2px solid transparent;
+  }
+  .drill .grp span.done { color: var(--accent); }
+  .drill .grp span.current { color: var(--ink); border-bottom-color: var(--red); }
+  .drill .grp span.done.err { color: var(--red); }
 
   .glyph { font-size: 4.6rem; line-height: 1.1; }
   .glyph-pinyin { color: var(--muted); font-size: 1rem; }
   .glyph-pinyin b { color: var(--ink); font-family: "Chivo Mono", monospace; }
 
   .prompt-note { color: var(--muted); font-size: 0.8rem; text-align: center; }
-  .prompt-note kbd {
+  .prompt-note kbd, footer kbd {
     font-family: "Chivo Mono", monospace; font-size: 0.78rem;
     border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; background: var(--bg);
   }
@@ -187,9 +207,12 @@
 
   <div class="controls">
     <div class="seg" role="group" aria-label="Practice mode">
-      <button id="mode-sym" aria-pressed="true">Symbols ㄅㄆㄇ</button>
-      <button id="mode-word" aria-pressed="false">Words 詞語</button>
+      <button data-mode="sym" aria-pressed="true">Symbols ㄅㄆㄇ</button>
+      <button data-mode="drill" aria-pressed="false">Drills 指法</button>
+      <button data-mode="chars" aria-pressed="false">Characters 常用字</button>
+      <button data-mode="word" aria-pressed="false">Words 詞語</button>
     </div>
+    <select class="picker" id="drill-set" aria-label="Drill keys" hidden></select>
     <button class="toggle" id="tog-tones" aria-pressed="false"><span class="dot"></span>Require tones</button>
     <button class="toggle" id="tog-legend" aria-pressed="true"><span class="dot"></span>Show key legends</button>
   </div>
@@ -197,6 +220,7 @@
   <div class="card prompt" id="prompt-card">
     <div id="prompt-body"></div>
     <div class="prompt-note" id="prompt-note"></div>
+    <div class="prompt-note" id="prompt-last"></div>
   </div>
 
   <div class="card">
@@ -207,6 +231,7 @@
     <div class="stat"><span class="num" id="st-acc">–</span><span class="lbl">Accuracy</span></div>
     <div class="stat"><span class="num" id="st-streak">0</span><span class="lbl">Streak</span></div>
     <div class="stat"><span class="num" id="st-done">0</span><span class="lbl">Completed</span></div>
+    <div class="stat"><span class="num" id="st-speed">–</span><span class="lbl">Keys / min</span></div>
     <div class="weak" id="st-weak"></div>
     <button class="reset" id="st-reset">reset stats</button>
   </div>
@@ -214,6 +239,8 @@
   <footer>
     Type on your physical keyboard. In toneless mode this mirrors Chewing's fuzzy mode; turn on
     <strong>Require tones</strong> to drill the tone keys too (space&nbsp;=&nbsp;1st tone, 6&nbsp;=&nbsp;ˊ, 3&nbsp;=&nbsp;ˇ, 4&nbsp;=&nbsp;ˋ, 7&nbsp;=&nbsp;˙).
+    <strong>Drills</strong> repeat short key patterns on one key group; the gaps between groups are just for reading, don't press space.
+    Press <kbd>Esc</kbd> to skip to a new prompt.
   </footer>
 </div>
 
@@ -237,6 +264,50 @@
     SYM_TO_KEY[z] = k;
     if (p) SYMBOLS.push({ key: k, sym: z, pinyin: p });
   }
+  SYM_TO_KEY['ˉ'] = ' ';
+
+  // ---- drill key groups (as symbol strings) ----
+  const rowSyms = i => ROWS[i].filter(([, , p]) => p).map(([, z]) => z).join('');
+  const DRILL_SETS = {
+    home:     ['Home row ㄇㄋㄎ…', rowSyms(2)],
+    top:      ['Top row ㄆㄊㄍ…', rowSyms(1)],
+    bottom:   ['Bottom row ㄈㄌㄏ…', rowSyms(3)],
+    number:   ['Number row ㄅㄉㄓ…', rowSyms(0)],
+    initials: ['Initials 聲母', 'ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙ'],
+    finals:   ['Medials + finals 韻母', 'ㄧㄨㄩㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦ'],
+    tones:    ['Tone keys ˉˊˇˋ˙', 'ˉˊˇˋ˙'],
+    all:      ['All symbols', SYMBOLS.map(s => s.sym).join('')],
+    weak:     ['My weak keys', ''],
+  };
+
+  // ---- common characters: han + zhuyin + tone mark (no mark = 1st tone) ----
+  const COMMON = `
+    的ㄉㄜ˙ 一ㄧ 是ㄕˋ 不ㄅㄨˋ 了ㄌㄜ˙ 人ㄖㄣˊ 我ㄨㄛˇ 在ㄗㄞˋ 有ㄧㄡˇ 他ㄊㄚ 這ㄓㄜˋ 個ㄍㄜˋ
+    們ㄇㄣ˙ 中ㄓㄨㄥ 來ㄌㄞˊ 上ㄕㄤˋ 大ㄉㄚˋ 國ㄍㄨㄛˊ 地ㄉㄧˋ 到ㄉㄠˋ 以ㄧˇ 說ㄕㄨㄛ 時ㄕˊ 要ㄧㄠˋ
+    就ㄐㄧㄡˋ 出ㄔㄨ 會ㄏㄨㄟˋ 可ㄎㄜˇ 也ㄧㄝˇ 你ㄋㄧˇ 對ㄉㄨㄟˋ 生ㄕㄥ 能ㄋㄥˊ 而ㄦˊ 子ㄗˇ 那ㄋㄚˋ
+    得ㄉㄜˊ 下ㄒㄧㄚˋ 自ㄗˋ 之ㄓ 年ㄋㄧㄢˊ 過ㄍㄨㄛˋ 發ㄈㄚ 後ㄏㄡˋ 作ㄗㄨㄛˋ 裡ㄌㄧˇ 用ㄩㄥˋ 道ㄉㄠˋ
+    行ㄒㄧㄥˊ 所ㄙㄨㄛˇ 然ㄖㄢˊ 家ㄐㄧㄚ 種ㄓㄨㄥˇ 事ㄕˋ 成ㄔㄥˊ 方ㄈㄤ 多ㄉㄨㄛ 經ㄐㄧㄥ 麼ㄇㄜ˙ 去ㄑㄩˋ
+    法ㄈㄚˇ 學ㄒㄩㄝˊ 如ㄖㄨˊ 都ㄉㄡ 同ㄊㄨㄥˊ 現ㄒㄧㄢˋ 當ㄉㄤ 沒ㄇㄟˊ 動ㄉㄨㄥˋ 面ㄇㄧㄢˋ 起ㄑㄧˇ 看ㄎㄢˋ
+    定ㄉㄧㄥˋ 天ㄊㄧㄢ 分ㄈㄣ 還ㄏㄞˊ 進ㄐㄧㄣˋ 好ㄏㄠˇ 小ㄒㄧㄠˇ 部ㄅㄨˋ 其ㄑㄧˊ 些ㄒㄧㄝ 主ㄓㄨˇ 樣ㄧㄤˋ
+    理ㄌㄧˇ 心ㄒㄧㄣ 她ㄊㄚ 本ㄅㄣˇ 前ㄑㄧㄢˊ 開ㄎㄞ 但ㄉㄢˋ 因ㄧㄣ 只ㄓˇ 從ㄘㄨㄥˊ 想ㄒㄧㄤˇ 實ㄕˊ
+    日ㄖˋ 者ㄓㄜˇ 意ㄧˋ 無ㄨˊ 力ㄌㄧˋ 與ㄩˇ 長ㄔㄤˊ 把ㄅㄚˇ 機ㄐㄧ 十ㄕˊ 民ㄇㄧㄣˊ 第ㄉㄧˋ
+    公ㄍㄨㄥ 此ㄘˇ 已ㄧˇ 工ㄍㄨㄥ 使ㄕˇ 情ㄑㄧㄥˊ 明ㄇㄧㄥˊ 性ㄒㄧㄥˋ 知ㄓ 全ㄑㄩㄢˊ 三ㄙㄢ 又ㄧㄡˋ
+    關ㄍㄨㄢ 點ㄉㄧㄢˇ 正ㄓㄥˋ 業ㄧㄝˋ 外ㄨㄞˋ 兩ㄌㄧㄤˇ 高ㄍㄠ 間ㄐㄧㄢ 問ㄨㄣˋ 很ㄏㄣˇ 最ㄗㄨㄟˋ 物ㄨˋ
+    手ㄕㄡˇ 向ㄒㄧㄤˋ 頭ㄊㄡˊ 文ㄨㄣˊ 體ㄊㄧˇ 美ㄇㄟˇ 見ㄐㄧㄢˋ 被ㄅㄟˋ 什ㄕㄜˊ 二ㄦˋ 等ㄉㄥˇ 或ㄏㄨㄛˋ
+    新ㄒㄧㄣ 己ㄐㄧˇ 身ㄕㄣ 果ㄍㄨㄛˇ 加ㄐㄧㄚ 西ㄒㄧ 月ㄩㄝˋ 話ㄏㄨㄚˋ 回ㄏㄨㄟˊ 特ㄊㄜˋ 內ㄋㄟˋ 信ㄒㄧㄣˋ
+    老ㄌㄠˇ 給ㄍㄟˇ 世ㄕˋ 位ㄨㄟˋ 次ㄘˋ 門ㄇㄣˊ 常ㄔㄤˊ 先ㄒㄧㄢ 海ㄏㄞˇ 通ㄊㄨㄥ 東ㄉㄨㄥ 聲ㄕㄥ
+    比ㄅㄧˇ 水ㄕㄨㄟˇ 名ㄇㄧㄥˊ 真ㄓㄣ 走ㄗㄡˇ 口ㄎㄡˇ 女ㄋㄩˇ 四ㄙˋ 電ㄉㄧㄢˋ 安ㄢ 少ㄕㄠˇ 才ㄘㄞˊ
+    太ㄊㄞˋ 再ㄗㄞˋ 做ㄗㄨㄛˋ 車ㄔㄜ 快ㄎㄨㄞˋ 怎ㄗㄣˇ 呢ㄋㄜ˙ 台ㄊㄞˊ 字ㄗˋ 愛ㄞˋ 錢ㄑㄧㄢˊ 吃ㄔ
+    嗎ㄇㄚ˙ 吧ㄅㄚ˙ 找ㄓㄠˇ 書ㄕㄨ 白ㄅㄞˊ 聽ㄊㄧㄥ 買ㄇㄞˇ 賣ㄇㄞˋ 早ㄗㄠˇ 晚ㄨㄢˇ 冷ㄌㄥˇ 熱ㄖㄜˋ
+    喝ㄏㄜ 睡ㄕㄨㄟˋ 誰ㄕㄟˊ 哪ㄋㄚˇ 您ㄋㄧㄣˊ 請ㄑㄧㄥˇ 謝ㄒㄧㄝˋ 朋ㄆㄥˊ 友ㄧㄡˇ 路ㄌㄨˋ 坐ㄗㄨㄛˋ 住ㄓㄨˋ
+    飯ㄈㄢˋ 菜ㄘㄞˋ 茶ㄔㄚˊ 雨ㄩˇ 貓ㄇㄠ 狗ㄍㄡˇ 每ㄇㄟˇ 讓ㄖㄤˋ 跟ㄍㄣ 黑ㄏㄟ 紅ㄏㄨㄥˊ 綠ㄌㄩˋ
+    窗ㄔㄨㄤ 船ㄔㄨㄢˊ 雙ㄕㄨㄤ 春ㄔㄨㄣ 雪ㄒㄩㄝˇ 決ㄐㄩㄝˊ 群ㄑㄩㄣˊ 選ㄒㄩㄢˇ 軍ㄐㄩㄣ 夠ㄍㄡˋ 歐ㄡ 恩ㄣ
+    額ㄜˊ 婆ㄆㄛˊ 佛ㄈㄛˊ 波ㄅㄛ 歌ㄍㄜ 色ㄙㄜˋ 草ㄘㄠˇ 送ㄙㄨㄥˋ 村ㄘㄨㄣ 錯ㄘㄨㄛˋ 隨ㄙㄨㄟˊ 算ㄙㄨㄢˋ
+  `.trim().split(/\s+/).map(tok => {
+    const [han, ...rest] = tok;
+    const tone = { 'ˊ': 2, 'ˇ': 3, 'ˋ': 4, '˙': 5 }[rest.at(-1)];
+    return { han, zy: (tone ? rest.slice(0, -1) : rest).join(''), tone: tone || 1 };
+  });
 
   // ---- word list: [characters, [zhuyin, tone] per syllable] ----
   const WORDS = [
@@ -292,10 +363,10 @@
     save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
   };
 
-  const settings = Object.assign({ mode: 'sym', tones: false, legends: true }, store.load('zt-settings', {}));
+  const settings = Object.assign({ mode: 'sym', tones: false, legends: true, drillSet: 'home' }, store.load('zt-settings', {}));
   let symStats = store.load('zt-symstats', {}); // sym -> {hit, miss}
 
-  const session = { hits: 0, misses: 0, streak: 0, done: 0 };
+  const session = { hits: 0, misses: 0, streak: 0, done: 0, keys: 0, ms: 0 };
 
   // ---- build keyboard ----
   const kbEl = document.getElementById('kb');
@@ -329,21 +400,42 @@
   let errorsThisStep = 0;
   let currentSym = null; // symbol being tested (for stats)
   let lastGlyph = null;
+  let line = null;       // timing for the current prompt: {start, keys, misses}
+  let lastLine = '';     // summary of the previous multi-key prompt
 
   const promptBody = document.getElementById('prompt-body');
   const promptNote = document.getElementById('prompt-note');
+  const promptLast = document.getElementById('prompt-last');
   const promptCard = document.getElementById('prompt-card');
+
+  const rand = arr => arr[Math.floor(Math.random() * arr.length)];
+
+  function isWeak(sym) {
+    const st = symStats[sym];
+    return !!st && st.hit + st.miss >= 3 && st.hit / (st.hit + st.miss) < 0.8;
+  }
+
+  // weakest symbols first, for the stats chips and the "weak keys" drill
+  function rankedWeak(minTotal, maxAcc) {
+    return Object.entries(symStats)
+      .map(([sym, s]) => ({ sym, total: s.hit + s.miss, acc: s.hit / (s.hit + s.miss) }))
+      .filter(w => w.total >= minTotal && w.acc < maxAcc)
+      .sort((a, b) => a.acc - b.acc);
+  }
 
   function weightedSymbol() {
     const pool = [];
     for (const s of SYMBOLS) {
-      const st = symStats[s.sym] || { hit: 0, miss: 0 };
-      const total = st.hit + st.miss;
-      const acc = total ? st.hit / total : 1;
-      const w = s.sym === lastGlyph ? 0 : (acc < 0.8 && total >= 3 ? 3 : 1);
+      const w = s.sym === lastGlyph ? 0 : (isWeak(s.sym) ? 3 : 1);
       for (let i = 0; i < w; i++) pool.push(s);
     }
-    return pool[Math.floor(Math.random() * pool.length)];
+    return rand(pool);
+  }
+
+  function weightedPick(syms) {
+    const pool = [];
+    for (const s of syms) pool.push(...(isWeak(s) ? [s, s, s] : [s]));
+    return rand(pool);
   }
 
   function nextSymbolPrompt() {
@@ -358,54 +450,115 @@
     queue = [{ key: s.key, el: null, sym: s.sym }];
   }
 
+  // one character with its zhuyin column; appends its key presses to the queue
+  function buildSyllable(han, zy, tone) {
+    const sylEl = document.createElement('div');
+    sylEl.className = 'syl';
+    sylEl.innerHTML = `<div class="han zh">${han}</div>`;
+    const col = document.createElement('div');
+    col.className = 'zy-col zh';
+    const toneEl = document.createElement('span');
+    toneEl.className = 'tone' + (settings.tones ? '' : ' off');
+    toneEl.textContent = TONE_MARK[tone];
+    // neutral tone is written before the syllable
+    if (tone === 5) col.appendChild(toneEl);
+    for (const ch of zy) {
+      const sp = document.createElement('span');
+      sp.textContent = ch;
+      col.appendChild(sp);
+      queue.push({ key: SYM_TO_KEY[ch], el: sp, sym: ch, sylEl });
+    }
+    if (tone !== 5) col.appendChild(toneEl);
+    if (settings.tones) {
+      queue.push({ key: TONE_KEY[tone], el: toneEl, sym: TONE_MARK[tone], sylEl, isTone: true });
+    }
+    sylEl.appendChild(col);
+    return sylEl;
+  }
+
+  function syllableNote() {
+    return settings.tones
+      ? 'Type each zhuyin symbol, then its tone key (<kbd>space</kbd> for 1st tone)'
+      : 'Type the zhuyin symbols — tones shown but not required, just like fuzzy mode';
+  }
+
   function nextWordPrompt() {
-    const [chars, syls] = WORDS[Math.floor(Math.random() * WORDS.length)];
+    const [chars, syls] = rand(WORDS);
     if (chars === lastGlyph && WORDS.length > 1) return nextWordPrompt();
     lastGlyph = chars;
-    errorsThisStep = 0;
     queue = [];
     const row = document.createElement('div');
     row.className = 'word-row';
-    syls.forEach((syl, i) => {
-      const [zy, tone] = syl;
-      const sylEl = document.createElement('div');
-      sylEl.className = 'syl';
-      const col = document.createElement('div');
-      col.className = 'zy-col zh';
-      const spans = [];
-      // neutral tone is written before the syllable
-      if (tone === 5) {
-        const t = document.createElement('span');
-        t.className = 'tone' + (settings.tones ? '' : ' off');
-        t.textContent = TONE_MARK[5];
-        col.appendChild(t);
-        spans.tone = t;
-      }
-      for (const ch of zy) {
-        const sp = document.createElement('span');
-        sp.textContent = ch;
-        col.appendChild(sp);
-        queue.push({ key: SYM_TO_KEY[ch], el: sp, sym: ch, sylEl });
-      }
-      if (tone !== 5) {
-        const t = document.createElement('span');
-        t.className = 'tone' + (settings.tones ? '' : ' off');
-        t.textContent = TONE_MARK[tone];
-        col.appendChild(t);
-        spans.tone = t;
-      }
-      if (settings.tones) {
-        queue.push({ key: TONE_KEY[tone], el: spans.tone, sym: TONE_MARK[tone], sylEl, isTone: true });
-      }
-      sylEl.innerHTML = `<div class="han zh">${[...chars][i]}</div>`;
-      sylEl.appendChild(col);
-      row.appendChild(sylEl);
-    });
+    syls.forEach(([zy, tone], i) => row.appendChild(buildSyllable([...chars][i], zy, tone)));
     promptBody.innerHTML = '';
     promptBody.appendChild(row);
-    promptNote.innerHTML = settings.tones
-      ? 'Type each zhuyin symbol, then its tone key (<kbd>space</kbd> for 1st tone)'
-      : 'Type the zhuyin symbols — tones shown but not required, just like fuzzy mode';
+    promptNote.innerHTML = syllableNote();
+    markCurrent();
+  }
+
+  // a line of common characters, favouring ones that contain weak symbols
+  function nextCharsPrompt() {
+    const pool = [];
+    for (const c of COMMON) {
+      const weak = [...c.zy].filter(isWeak).length;
+      for (let i = 0; i <= weak * 2; i++) pool.push(c);
+    }
+    queue = [];
+    const row = document.createElement('div');
+    row.className = 'word-row line';
+    let prev = null;
+    for (let i = 0; i < 8; i++) {
+      let c;
+      do c = rand(pool); while (c === prev);
+      prev = c;
+      row.appendChild(buildSyllable(c.han, c.zy, c.tone));
+    }
+    promptBody.innerHTML = '';
+    promptBody.appendChild(row);
+    promptNote.innerHTML = syllableNote();
+    markCurrent();
+  }
+
+  // key-repetition line, typing-tutor style: ㄇㄇㄇ ㄇㄋㄇㄋ ㄋㄋㄇㄇ …
+  function drillGroup(syms) {
+    const a = weightedPick(syms);
+    let b = weightedPick(syms);
+    for (let i = 0; b === a && i < 10; i++) b = weightedPick(syms);
+    const r = Math.random();
+    if (r < 0.25 || a === b) return [a, a, a];
+    if (r < 0.5) return [a, b, a, b];
+    if (r < 0.65) return [a, a, b, b];
+    if (r < 0.8) return [a, b, b, a];
+    return [a, b, weightedPick(syms), weightedPick(syms)];
+  }
+
+  function nextDrillPrompt() {
+    let syms = [...DRILL_SETS[settings.drillSet][1]];
+    let note = 'Type the groups left to right — no space between them';
+    if (settings.drillSet === 'weak') {
+      syms = rankedWeak(3, 0.95).map(w => w.sym).filter(s => s in SYM_TO_KEY).slice(0, 6);
+      if (syms.length < 3) {
+        syms = [...DRILL_SETS.all[1]];
+        note = 'Not enough mistakes recorded yet — drilling all symbols for now';
+      }
+    }
+    queue = [];
+    const wrap = document.createElement('div');
+    wrap.className = 'drill zh';
+    for (let g = 0; g < 10; g++) {
+      const grp = document.createElement('span');
+      grp.className = 'grp';
+      for (const sym of drillGroup(syms)) {
+        const sp = document.createElement('span');
+        sp.textContent = sym;
+        grp.appendChild(sp);
+        queue.push({ key: SYM_TO_KEY[sym], el: sp, sym });
+      }
+      wrap.appendChild(grp);
+    }
+    promptBody.innerHTML = '';
+    promptBody.appendChild(wrap);
+    promptNote.textContent = note;
     markCurrent();
   }
 
@@ -420,10 +573,13 @@
     for (const k in keyEls) keyEls[k].classList.remove('hint');
   }
 
+  const PROMPTS = { sym: nextSymbolPrompt, drill: nextDrillPrompt, chars: nextCharsPrompt, word: nextWordPrompt };
+
   function nextPrompt() {
     clearHint();
-    if (settings.mode === 'sym') nextSymbolPrompt();
-    else nextWordPrompt();
+    line = { start: 0, keys: 0, misses: 0 };
+    PROMPTS[settings.mode]();
+    promptLast.textContent = settings.mode === 'sym' ? '' : lastLine;
   }
 
   // ---- stats rendering ----
@@ -431,17 +587,15 @@
   const stStreak = document.getElementById('st-streak');
   const stDone = document.getElementById('st-done');
   const stWeak = document.getElementById('st-weak');
+  const stSpeed = document.getElementById('st-speed');
 
   function renderStats() {
     const total = session.hits + session.misses;
     stAcc.textContent = total ? Math.round(100 * session.hits / total) + '%' : '–';
     stStreak.textContent = session.streak;
     stDone.textContent = session.done;
-    const weak = Object.entries(symStats)
-      .map(([sym, s]) => ({ sym, total: s.hit + s.miss, acc: s.hit / (s.hit + s.miss) }))
-      .filter(w => w.total >= 4 && w.acc < 0.85)
-      .sort((a, b) => a.acc - b.acc)
-      .slice(0, 5);
+    stSpeed.textContent = session.ms ? Math.round(session.keys / session.ms * 60000) : '–';
+    const weak = rankedWeak(4, 0.85).slice(0, 5);
     stWeak.innerHTML = weak.length
       ? weak.map(w => `<span class="chip zh">${w.sym}<small>${Math.round(w.acc * 100)}%</small></span>`).join('')
       : '';
@@ -464,22 +618,38 @@
 
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (e.key === 'Escape') { nextPrompt(); return; }
     const k = e.key.toLowerCase();
     if (!(k in keyEls)) return;
     e.preventDefault();
     if (!queue.length) return;
+    if (!line.start) line.start = performance.now();
 
     const step = queue[0];
     if (k === step.key) {
       flashKey(k, 'ok');
       session.hits++;
       session.streak++;
+      line.keys++;
       recordResult(step.sym, errorsThisStep === 0);
-      if (step.el) { step.el.classList.remove('current'); step.el.classList.add('done'); }
+      if (step.el) {
+        step.el.classList.remove('current');
+        step.el.classList.add('done');
+        if (errorsThisStep) step.el.classList.add('err');
+      }
       queue.shift();
       if (step.sylEl && !queue.some(q => q.sylEl === step.sylEl)) step.sylEl.classList.add('done');
       if (!queue.length) {
         session.done++;
+        // speed counts the gaps between key presses, so the first key starts the clock
+        if (settings.mode !== 'sym' && line.keys > 1) {
+          const ms = performance.now() - line.start;
+          session.keys += line.keys - 1;
+          session.ms += ms;
+          const kpm = Math.round((line.keys - 1) / ms * 60000);
+          const acc = Math.round(100 * line.keys / (line.keys + line.misses));
+          lastLine = `Last: ${kpm} keys/min · ${acc}% accuracy`;
+        }
         promptCard.classList.remove('flash-ok');
         void promptCard.offsetWidth;
         promptCard.classList.add('flash-ok');
@@ -493,6 +663,7 @@
       flashKey(k, 'bad');
       session.misses++;
       session.streak = 0;
+      line.misses++;
       errorsThisStep++;
       promptCard.classList.remove('flash-bad');
       void promptCard.offsetWidth;
@@ -503,28 +674,40 @@
   });
 
   // ---- controls ----
-  const modeSym = document.getElementById('mode-sym');
-  const modeWord = document.getElementById('mode-word');
+  const modeBtns = document.querySelectorAll('[data-mode]');
   const togTones = document.getElementById('tog-tones');
   const togLegend = document.getElementById('tog-legend');
+  const drillSel = document.getElementById('drill-set');
+  for (const [id, [label]] of Object.entries(DRILL_SETS)) drillSel.add(new Option(label, id));
+  if (!(settings.mode in PROMPTS)) settings.mode = 'sym';
+  if (!(settings.drillSet in DRILL_SETS)) settings.drillSet = 'home';
 
   function applySettings() {
-    modeSym.setAttribute('aria-pressed', settings.mode === 'sym');
-    modeWord.setAttribute('aria-pressed', settings.mode === 'word');
+    for (const b of modeBtns) b.setAttribute('aria-pressed', b.dataset.mode === settings.mode);
     togTones.setAttribute('aria-pressed', settings.tones);
     togLegend.setAttribute('aria-pressed', settings.legends);
+    drillSel.hidden = settings.mode !== 'drill';
+    drillSel.value = settings.drillSet;
     kbEl.classList.toggle('nolegend', !settings.legends);
     store.save('zt-settings', settings);
   }
-  modeSym.addEventListener('click', () => { settings.mode = 'sym'; applySettings(); nextPrompt(); });
-  modeWord.addEventListener('click', () => { settings.mode = 'word'; applySettings(); nextPrompt(); });
-  togTones.addEventListener('click', () => { settings.tones = !settings.tones; applySettings(); if (settings.mode === 'word') nextPrompt(); });
+  for (const b of modeBtns) {
+    b.addEventListener('click', () => { settings.mode = b.dataset.mode; lastLine = ''; applySettings(); nextPrompt(); });
+  }
+  // blur afterwards so typing letters doesn't jump the select's selection
+  drillSel.addEventListener('change', () => { settings.drillSet = drillSel.value; applySettings(); drillSel.blur(); nextPrompt(); });
+  togTones.addEventListener('click', () => {
+    settings.tones = !settings.tones;
+    applySettings();
+    if (settings.mode === 'word' || settings.mode === 'chars') nextPrompt();
+  });
   togLegend.addEventListener('click', () => { settings.legends = !settings.legends; applySettings(); });
 
   document.getElementById('st-reset').addEventListener('click', () => {
     symStats = {};
     store.save('zt-symstats', symStats);
-    session.hits = session.misses = session.streak = session.done = 0;
+    session.hits = session.misses = session.streak = session.done = session.keys = session.ms = 0;
+    lastLine = '';
     renderStats();
   });
 
