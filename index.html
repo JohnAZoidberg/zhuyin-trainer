@@ -171,6 +171,7 @@
   .key.pressed { transform: translateY(2px); box-shadow: 0 0 0 var(--key-shadow); }
   .key.ok { background: var(--accent-soft); border-color: var(--accent); }
   .key.bad { background: var(--red-soft); border-color: var(--red); }
+  .key.next:not(.hint) { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent), 0 2px 0 var(--key-shadow); }
   .key.hint { border-color: var(--red); animation: hintpulse 0.9s ease-in-out infinite; }
   @keyframes hintpulse { 50% { background: var(--red-soft); } }
   .kb.nolegend .legend:not(.tone-mark) { visibility: hidden; }
@@ -215,6 +216,7 @@
     <select class="picker" id="drill-set" aria-label="Drill keys" hidden></select>
     <button class="toggle" id="tog-tones" aria-pressed="false"><span class="dot"></span>Require tones</button>
     <button class="toggle" id="tog-legend" aria-pressed="true"><span class="dot"></span>Show key legends</button>
+    <button class="toggle" id="tog-guide" aria-pressed="false"><span class="dot"></span>Highlight next key</button>
   </div>
 
   <div class="card prompt" id="prompt-card">
@@ -363,7 +365,7 @@
     save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
   };
 
-  const settings = Object.assign({ mode: 'sym', tones: false, legends: true, drillSet: 'home' }, store.load('zt-settings', {}));
+  const settings = Object.assign({ mode: 'sym', tones: false, legends: true, guide: false, drillSet: 'home' }, store.load('zt-settings', {}));
   let symStats = store.load('zt-symstats', {}); // sym -> {hit, miss}
 
   const session = { hits: 0, misses: 0, streak: 0, done: 0, keys: 0, ms: 0 };
@@ -567,10 +569,16 @@
     currentSym = queue.length ? queue[0].sym : null;
     errorsThisStep = 0;
     clearHint();
+    showNext();
   }
 
   function clearHint() {
     for (const k in keyEls) keyEls[k].classList.remove('hint');
+  }
+
+  function showNext() {
+    for (const k in keyEls) keyEls[k].classList.remove('next');
+    if (settings.guide && queue.length) keyEls[queue[0].key].classList.add('next');
   }
 
   const PROMPTS = { sym: nextSymbolPrompt, drill: nextDrillPrompt, chars: nextCharsPrompt, word: nextWordPrompt };
@@ -579,6 +587,7 @@
     clearHint();
     line = { start: 0, keys: 0, misses: 0 };
     PROMPTS[settings.mode]();
+    showNext();
     promptLast.textContent = settings.mode === 'sym' ? '' : lastLine;
   }
 
@@ -641,6 +650,7 @@
       if (step.sylEl && !queue.some(q => q.sylEl === step.sylEl)) step.sylEl.classList.add('done');
       if (!queue.length) {
         session.done++;
+        showNext();
         // speed counts the gaps between key presses, so the first key starts the clock
         if (settings.mode !== 'sym' && line.keys > 1) {
           const ms = performance.now() - line.start;
@@ -677,6 +687,7 @@
   const modeBtns = document.querySelectorAll('[data-mode]');
   const togTones = document.getElementById('tog-tones');
   const togLegend = document.getElementById('tog-legend');
+  const togGuide = document.getElementById('tog-guide');
   const drillSel = document.getElementById('drill-set');
   for (const [id, [label]] of Object.entries(DRILL_SETS)) drillSel.add(new Option(label, id));
   if (!(settings.mode in PROMPTS)) settings.mode = 'sym';
@@ -686,6 +697,7 @@
     for (const b of modeBtns) b.setAttribute('aria-pressed', b.dataset.mode === settings.mode);
     togTones.setAttribute('aria-pressed', settings.tones);
     togLegend.setAttribute('aria-pressed', settings.legends);
+    togGuide.setAttribute('aria-pressed', settings.guide);
     drillSel.hidden = settings.mode !== 'drill';
     drillSel.value = settings.drillSet;
     kbEl.classList.toggle('nolegend', !settings.legends);
@@ -702,6 +714,7 @@
     if (settings.mode === 'word' || settings.mode === 'chars') nextPrompt();
   });
   togLegend.addEventListener('click', () => { settings.legends = !settings.legends; applySettings(); });
+  togGuide.addEventListener('click', () => { settings.guide = !settings.guide; applySettings(); showNext(); });
 
   document.getElementById('st-reset').addEventListener('click', () => {
     symStats = {};
