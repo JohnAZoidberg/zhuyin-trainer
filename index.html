@@ -139,6 +139,13 @@
   .glyph-pinyin { color: var(--muted); font-size: 1rem; }
   .glyph-pinyin b { color: var(--ink); font-family: "Chivo Mono", monospace; }
 
+  /* listening mode: blanks until typed or revealed */
+  .listen:not(.revealed) .glyph, .listen:not(.revealed) .syl:not(.done) .han {
+    color: transparent; box-shadow: inset 0 -2px var(--line);
+  }
+  .listen:not(.revealed) .glyph-pinyin { visibility: hidden; }
+  .listen:not(.revealed) .zy-col span:not(.done) { color: transparent; }
+
   .prompt-note { color: var(--muted); font-size: 0.8rem; text-align: center; }
   .prompt-note kbd, footer kbd {
     font-family: "Chivo Mono", monospace; font-size: 0.78rem;
@@ -227,6 +234,7 @@
     <button class="toggle" id="tog-legend" aria-pressed="true"><span class="dot"></span>Show key legends</button>
     <button class="toggle" id="tog-guide" aria-pressed="false"><span class="dot"></span>Highlight next key</button>
     <button class="toggle" id="tog-speak" aria-pressed="false"><span class="dot"></span>Speak 朗讀</button>
+    <button class="toggle" id="tog-listen" aria-pressed="false"><span class="dot"></span>Listen only 聽寫</button>
   </div>
 
   <div class="card prompt" id="prompt-card">
@@ -254,6 +262,7 @@
     <strong>Drills</strong> repeat short key patterns on one key group; the gaps between groups are just for reading, don't press space.
     <strong>Speak</strong> reads the prompt aloud with your browser's Chinese voice (each character in turn on
     the Characters line; drills stay silent). Press <kbd>`</kbd> to hear it again.
+    <strong>Listen only</strong> hides the characters and zhuyin so you type from sound alone; <kbd>Esc</kbd> shows the answer.
     Press <kbd>Esc</kbd> to skip to a new prompt.
   </footer>
 </div>
@@ -377,7 +386,7 @@
     save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
   };
 
-  const settings = Object.assign({ mode: 'sym', tones: false, legends: true, guide: false, speak: false, drillSet: 'home' }, store.load('zt-settings', {}));
+  const settings = Object.assign({ mode: 'sym', tones: false, legends: true, guide: false, speak: false, listen: false, drillSet: 'home' }, store.load('zt-settings', {}));
   let symStats = store.load('zt-symstats', {}); // sym -> {hit, miss}
 
   const session = { hits: 0, misses: 0, streak: 0, done: 0, keys: 0, ms: 0 };
@@ -461,7 +470,7 @@
     promptBody.innerHTML =
       `<div class="glyph zh">${s.sym}</div>
        <div class="glyph-pinyin">pinyin <b>${s.pinyin}</b></div>`;
-    promptNote.textContent = 'Press the key for this symbol';
+    promptNote.innerHTML = listening() ? listenNote('Press the key for the symbol you hear') : 'Press the key for this symbol';
     queue = [{ key: s.key, el: null, sym: s.sym }];
   }
 
@@ -491,7 +500,12 @@
     return sylEl;
   }
 
+  function listenNote(text) {
+    return `${text} — <kbd>\`</kbd> replay, <kbd>Esc</kbd> show answer`;
+  }
+
   function syllableNote() {
+    if (listening()) return listenNote(settings.tones ? 'Type the zhuyin and tone you hear' : 'Type the zhuyin you hear');
     return settings.tones
       ? 'Type each zhuyin symbol, then its tone key (<kbd>space</kbd> for 1st tone)'
       : 'Type the zhuyin symbols — tones shown but not required, just like fuzzy mode';
@@ -607,6 +621,8 @@
     speechSynthesis.addEventListener('voiceschanged', pickVoice);
   }
 
+  const listening = () => canSpeak && settings.listen && settings.mode !== 'drill';
+
   // isolated, these get the wrong reading from TTS; say a homophone instead
   const SAY_AS = { '得': '德', '地': '弟', '什': '蛇' };
 
@@ -622,7 +638,7 @@
   // symbols and words are spoken once per prompt, the characters line once per character
   let spokenFor = null;
   function speakCurrent(force) {
-    if (!canSpeak || !settings.speak || !queue.length || settings.mode === 'drill') return;
+    if (!(settings.speak || listening()) || !canSpeak || !queue.length || settings.mode === 'drill') return;
     const [text, owner] = settings.mode === 'chars' ? [queue[0].han, queue[0].sylEl] : [lastGlyph, line];
     if (owner === spokenFor && !force) return;
     spokenFor = owner;
@@ -633,6 +649,7 @@
 
   function nextPrompt() {
     clearHint();
+    promptCard.classList.remove('revealed');
     line = { start: 0, keys: 0, misses: 0 };
     PROMPTS[settings.mode]();
     showNext();
@@ -676,7 +693,12 @@
 
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-    if (e.key === 'Escape') { nextPrompt(); return; }
+    if (e.key === 'Escape') {
+      // listening: first Esc shows the answer, second one skips
+      if (listening() && queue.length && !promptCard.classList.contains('revealed')) promptCard.classList.add('revealed');
+      else nextPrompt();
+      return;
+    }
     if (e.key === '`') { e.preventDefault(); speakCurrent(true); return; }
     const k = e.key.toLowerCase();
     if (!(k in keyEls)) return;
@@ -712,9 +734,10 @@
         }
         promptCard.classList.remove('flash-ok');
         void promptCard.offsetWidth;
-        promptCard.classList.add('flash-ok');
+        promptCard.classList.add('flash-ok', 'revealed');
         renderStats();
-        setTimeout(nextPrompt, 450);
+        // linger on the revealed answer a bit longer when it was hidden
+        setTimeout(nextPrompt, listening() ? 1200 : 450);
       } else {
         markCurrent();
         renderStats();
@@ -739,7 +762,8 @@
   const togLegend = document.getElementById('tog-legend');
   const togGuide = document.getElementById('tog-guide');
   const togSpeak = document.getElementById('tog-speak');
-  togSpeak.hidden = !canSpeak;
+  const togListen = document.getElementById('tog-listen');
+  togSpeak.hidden = togListen.hidden = !canSpeak;
   const drillSel = document.getElementById('drill-set');
   for (const [id, [label]] of Object.entries(DRILL_SETS)) drillSel.add(new Option(label, id));
   if (!(settings.mode in PROMPTS)) settings.mode = 'sym';
@@ -751,6 +775,8 @@
     togLegend.setAttribute('aria-pressed', settings.legends);
     togGuide.setAttribute('aria-pressed', settings.guide);
     togSpeak.setAttribute('aria-pressed', settings.speak);
+    togListen.setAttribute('aria-pressed', settings.listen);
+    promptCard.classList.toggle('listen', listening());
     drillSel.hidden = settings.mode !== 'drill';
     drillSel.value = settings.drillSet;
     kbEl.classList.toggle('nolegend', !settings.legends);
@@ -771,7 +797,12 @@
   togSpeak.addEventListener('click', () => {
     settings.speak = !settings.speak;
     applySettings();
-    if (settings.speak) speakCurrent(true); else speechSynthesis.cancel();
+    if (settings.speak) speakCurrent(true); else if (!listening()) speechSynthesis.cancel();
+  });
+  togListen.addEventListener('click', () => {
+    settings.listen = !settings.listen;
+    applySettings();
+    if (settings.mode !== 'drill') nextPrompt();
   });
 
   document.getElementById('st-reset').addEventListener('click', () => {
